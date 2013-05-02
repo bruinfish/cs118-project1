@@ -19,10 +19,21 @@ class TestHandler(BaseHTTPRequestHandler):
             if lms != "":
                 m_ts = calendar.timegm(time.strptime(lms, "%a, %d %b %Y %H:%M:%S GMT"))
                 c_ts = calendar.timegm(time.gmtime())
-                if c_ts - m_ts > 5:
+                if c_ts - m_ts > 5 and c_ts - m_ts < 10:
                     lastModify=lms
                     expireDate=(datetime.utcnow()+timedelta(seconds=5)).strftime("%a, %d %b %Y %H:%M:%S GMT")
+                    self.hit = True
                     self.send_response(304)
+                    self.send_header('Expire',expireDate)
+                    self.send_header('Last-Modified', lastModify)
+                elif c_ts - m_ts > 10:
+                    cdata = "OK"
+                    size = len(cdata)
+                    expireDate=(datetime.utcnow()+timedelta(seconds=5)).strftime("%a, %d %b %Y %H:%M:%S GMT")
+                    lastModify=(datetime.utcnow()).strftime("%a, %d %b %Y %H:%M:%S GMT")
+                    self.send_response(200)
+                    self.send_header('Content-type','text/html')
+                    self.send_header('Content-length', str(size))
                     self.send_header('Expire',expireDate)
                     self.send_header('Last-Modified', lastModify)
                 else:
@@ -51,7 +62,6 @@ class TestHandler(BaseHTTPRequestHandler):
                 self.send_header('Connection', 'close')
             self.end_headers()
             if cdata != "":
-                print "Send data"
                 self.wfile.write(cdata)
 
         return
@@ -65,6 +75,7 @@ class ServerThread (Thread):
     def run(self):
         try:
             TestHandler.protocol_version = "HTTP/1.1"
+            TestHandler.hit = False
             self.server = HTTPServer(('', self.port), TestHandler)
             self.server.serve_forever()
         except KeyboardInterrupt:
@@ -83,35 +94,34 @@ try:
     r = False
     proxy = '127.0.0.1:'+pport
     conn = HTTPConnection(proxy)
-    conn.request("GET", "http://127.0.0.1:19900/basic")
+    conn.request("GET", "http://127.0.0.1:" + sport1 + "/basic")
     resp = conn.getresponse()
-    lms = resp.getheader('last-modified', "")
     data = resp.read()
     conn.close()
 
-    print "1 " + data
-
     time.sleep(3)
     conn2 = HTTPConnection(proxy)
-    hdrs = {"If-Modified-Since": lms}
-    conn2.request("GET", "http://127.0.0.1:19900/basic", headers=hdrs)
+    conn2.request("GET", "http://127.0.0.1:" + sport1 + "/basic")
     resp2 = conn2.getresponse()
     data2 = resp2.read()
     conn2.close()
 
-    print "2 " + data2
-
     time.sleep(3)
     conn3 = HTTPConnection(proxy)
-    conn3.request("GET", "http://127.0.0.1:19900/basic", headers=hdrs)
+    conn3.request("GET", "http://127.0.0.1:" + sport1 + "/basic")
     resp3 = conn3.getresponse()
     data3 = resp3.read()
     conn3.close()
 
-    print "3 " + data3
-    print resp3.status
+    time.sleep(6)
+    conn4 = HTTPConnection(proxy)
+    conn4.request("GET", "http://127.0.0.1:" + sport1 + "/basic")
+    resp4 = conn4.getresponse()
+    data4 = resp4.read()
+    conn4.close()
 
-    if int(resp3.status) == 304 and data2 == cdata:
+
+    if data4 == "OK" and data3 == cdata and data2 == cdata:
         r = True
     if r:
         print "Re-query Caching: [" + bcolors.PASS + "PASSED" + bcolors.ENDC + "]"
